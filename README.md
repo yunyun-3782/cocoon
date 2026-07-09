@@ -76,6 +76,14 @@ gradle build
 # jar 在 build/libs/N00bCocoon-x.x.x.jar
 ```
 
+## 相关插件
+
+| 插件 | 说明 | 链接 |
+|------|------|------|
+| 🔻 DeathDrop | 死亡按物品价值百分比掉落 | [GitHub](https://github.com/yunyun-3782/DeathDrop) · [插件页](https://minecraft.caellab.com/plugin/deathdrop) |
+| ⏰ RealtimeSync | 游戏昼夜与真实时间同步 | [GitHub](https://github.com/yunyun-3782/RealtimeSync) · [插件页](https://minecraft.caellab.com/plugin/realtimesync) |
+| 🫘 N00bCocoon | 新手茧 — 低价值新人保护 | [GitHub](https://github.com/yunyun-3782/cocoon) · [插件页](https://minecraft.caellab.com/plugin/cocoon) |
+
 ## 许可证
 
 [CaelLab BY-SA Code License](https://caellab.com/license/bysa-code)
