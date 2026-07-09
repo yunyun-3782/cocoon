@@ -78,4 +78,4 @@ gradle build
 
 ## 许可证
 
-[CC BY-NC-SA 4.0](LICENSE)
+[CaelLab BY-SA Code License](https://caellab.com/license/bysa-code)

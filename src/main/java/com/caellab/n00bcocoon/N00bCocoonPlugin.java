@@ -2,6 +2,10 @@
  * N00bCocoon - 新手茧
  * 低价值新人的保护壳，依赖DeathDrop价值体系
  * Copyright (c) 2025 Yunyun(云云)
+ * Source: https://github.com/yunyun-3782/cocoon
+ *
+ * CaelLab BY-SA Code License
+ * https://caellab.com/license/bysa-code
  */
 package com.caellab.n00bcocoon;
 

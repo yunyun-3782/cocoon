@@ -1,6 +1,11 @@
 /*
  * N00bCocoon - 新手茧
  * 命令处理器：/cocoon status|reload|check|ungive|give
+ * Copyright (c) 2025 Yunyun(云云)
+ * Source: https://github.com/yunyun-3782/cocoon
+ *
+ * CaelLab BY-SA Code License
+ * https://caellab.com/license/bysa-code
  */
 package com.caellab.n00bcocoon;
 

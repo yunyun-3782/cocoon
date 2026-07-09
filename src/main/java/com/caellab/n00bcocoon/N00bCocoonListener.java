@@ -1,6 +1,11 @@
 /*
  * N00bCocoon - 新手茧
  * 事件监听器：生物仇恨、PvP伤害、认证后通知
+ * Copyright (c) 2025 Yunyun(云云)
+ * Source: https://github.com/yunyun-3782/cocoon
+ *
+ * CaelLab BY-SA Code License
+ * https://caellab.com/license/bysa-code
  */
 package com.caellab.n00bcocoon;
 
