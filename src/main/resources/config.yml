@@ -1,0 +1,117 @@
+# ============================================
+# N00bCocoon (新手茧) - 新手保护插件配置
+# 适用于 Paper 1.21+ | 依赖: DeathDrop (可选)
+# ============================================
+
+# 消息前缀
+prefix: "&a&l[新手茧] &r"
+
+# ============================================
+#  保护条件（两个条件同时满足才生效）
+# ============================================
+conditions:
+  # 背包物品总价值低于此值时获得保护
+  # 使用 DeathDrop 的物品价值表计算，无 DeathDrop 时使用内置表
+  value-threshold: 5000
+
+  # 首次加入/注册后多少小时内获得保护
+  time-threshold-hours: 48
+
+# ============================================
+#  保护效果
+# ============================================
+effects:
+  # 敌对生物伤害：完全免疫（true=免疫，false=正常伤害）
+  mob-immunity: true
+
+  # 敌对生物仇恨：取消怪物锁定（true=怪物不看你，false=正常仇恨）
+  mob-aggro-cancel: true
+
+  # PvP伤害倍率（0.5 = 50%伤害）
+  pvp-damage-multiplier: 0.5
+
+  # PvP单次伤害上限（超过此值则截断）
+  pvp-max-damage: 10
+
+# ============================================
+#  通知设置
+# ============================================
+notifications:
+  # 加入后等认证通过才发通知（兼容登录插件）
+  wait-for-auth: true
+
+  # 认证检测超时（秒），超时后无论如何发通知
+  auth-timeout-seconds: 15
+
+  # 保护到期时弹全屏Title
+  expire-title: true
+
+  # 离线玩家到期后排队，上线认证后弹出
+  expire-queue-offline: true
+
+# ============================================
+#  敌对生物列表
+#  填写 EntityType 名称（不区分大小写）
+#  参考: https://jd.papermc.io/paper/1.21/org/bukkit/entity/EntityType.html
+# ============================================
+hostile-mobs:
+  # — 亡灵 —
+  - ZOMBIE
+  - ZOMBIE_VILLAGER
+  - ZOMBIFIED_PIGLIN
+  - DROWNED
+  - SKELETON
+  - STRAY
+  - WITHER_SKELETON
+  - BOGGED
+  # — 昆虫 —
+  - SPIDER
+  - CAVE_SPIDER
+  # — 恶魔/火焰 —
+  - BLAZE
+  - WITHER
+  # — 精灵/魔法 —
+  - ENDERMAN
+  - WITCH
+  - VEX
+  - EVOKER
+  - VINDICATOR
+  - PILLAGER
+  # — 幻兽/BOSS —
+  - CREEPER
+  - GHAST
+  - PHANTOM
+  - SHULKER
+  - WARDEN
+  - THE_ENDER_DRAGON
+  # — 水生 —
+  - GUARDIAN
+  - ELDER_GUARDIAN
+  # — 凋灵猪灵 —
+  - HOGLIN
+  - PIGLIN_BRUTE
+  # — 史莱姆 —
+  - SLIME
+  - MAGMA_CUBE
+  # — 暴风 —
+  - BREEZE
+  # — 掠夺者队长 —
+  - RAVAGER
+
+# ============================================
+#  消息（支持 & 颜色代码）
+# ============================================
+messages:
+  # 加入时聊天消息
+  protected: "&7你受到新手茧保护，暂时安全~"
+  # 保护到期聊天消息
+  protection-expired: "&c新手茧保护已消退，小心行事！"
+  # /cocoon status 显示
+  status-protected: "&7保护状态: &a✓ 生效中"
+  status-expired: "&7保护状态: &c✗ 已过期"
+  status-value: "&7背包价值: &e%value% &7点"
+  status-time: "&7保护剩余: &e%time%"
+  value-info: "&7背包物品总价值: &e%value% &7点"
+  # 管理员消息
+  admin-reloaded: "&a配置已重载！"
+  admin-check: "&7玩家 %player%: 价值 &e%value% &7点, 保护 &e%status%"

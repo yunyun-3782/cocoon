@@ -1,0 +1,18 @@
+name: N00bCocoon
+version: '${version}'
+main: com.caellab.n00bcocoon.N00bCocoonPlugin
+api-version: '1.21'
+description: 新手茧 - 低价值新人的保护壳
+softdepend: [DeathDrop]
+commands:
+  cocoon:
+    description: 新手茧命令
+    usage: /cocoon [status|reload|check|ungive|give]
+    permission: n00bcocoon.use
+permissions:
+  n00bcocoon.admin:
+    description: 管理员权限（reload/check/ungive/give）
+    default: op
+  n00bcocoon.bypass:
+    description: 始终受到新手茧保护
+    default: false
