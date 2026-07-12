@@ -9,6 +9,11 @@
 - **PvP减伤**：被保护玩家受到的PvP伤害降低，单次最高N点
 - **认证适配**：等登录插件认证通过后才发通知，兼容 CaelLabAuth / AuthMe / NLogin 等
 - **到期通知**：保护到期时全屏Title弹出，离线玩家排队等上线再弹
+- **消退系统**（v1.1.0）：保护结束后进入渐进消退流程，而非突然消失
+  - 120秒倒计时期间仍享受完整保护，同时清除附近敌对生物并重置仇恨
+  - 之后30分钟100%抑制敌对生物生成
+  - 再之后60分钟生成抑制线性衰减至0%
+  - 下线立即退出所有状态
 - **管理命令**：服主可手动给予/撤销保护
 
 ## 安装
@@ -55,6 +60,12 @@ notifications:
   auth-timeout-seconds: 15   # 认证检测超时
   expire-title: true         # 到期弹全屏Title
   expire-queue-offline: true # 离线排队等上线弹
+
+fading:
+  countdown-seconds: 120              # 消退倒计时（秒）
+  suppress:
+    full-duration-minutes: 30         # 100%抑制持续时间（分钟）
+    decay-duration-minutes: 60        # 抑制衰减持续时间（分钟）
 ```
 
 完整配置见 [config.yml](src/main/resources/config.yml)

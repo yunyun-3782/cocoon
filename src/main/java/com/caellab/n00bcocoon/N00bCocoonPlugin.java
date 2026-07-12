@@ -2,10 +2,6 @@
  * N00bCocoon - 新手茧
  * 低价值新人的保护壳，依赖DeathDrop价值体系
  * Copyright (c) 2025 Yunyun(云云)
- * Source: https://github.com/yunyun-3782/cocoon
- *
- * CaelLab BY-SA Code License
- * https://caellab.com/license/bysa-code
  */
 package com.caellab.n00bcocoon;
 
@@ -17,7 +13,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,20 +23,12 @@ public class N00bCocoonPlugin extends JavaPlugin {
 
     private static N00bCocoonPlugin instance;
 
-    // === 玩家数据 ===
+    // --- 玩家数据 ---
     private File playerDataFile;
     private YamlConfiguration playerDataConfig;
     private final Map<UUID, Long> firstJoinTimes = new ConcurrentHashMap<>();
-    private final Set<UUID> revokedPlayers = Collections.synchronizedSet(new HashSet<>());
-    private final Set<UUID> pendingExpireMessages = Collections.synchronizedSet(new HashSet<>());
 
-    // === 保护状态跟踪（用于检测状态变化弹Title） ===
-    private final Map<UUID, Boolean> lastProtectionStatus = new ConcurrentHashMap<>();
-
-    // === 认证检测器（防止玩家离线后任务还跑） ===
-    private final Map<UUID, BukkitRunnable> authCheckers = new ConcurrentHashMap<>();
-
-    // === 配置项 ===
+    // --- 配置项 ---
     private int valueThreshold = 5000;
     private int timeThresholdHours = 48;
     private double pvpDamageMultiplier = 0.5;
@@ -49,7 +36,7 @@ public class N00bCocoonPlugin extends JavaPlugin {
     private String prefix = "&a&l[新手茧] &r";
     private final Set<String> hostileMobNames = new HashSet<>();
 
-    // === 消息 ===
+    // --- 消息 ---
     private String msgProtected;
     private String msgProtectionExpired;
     private String msgStatusProtected;
@@ -60,17 +47,7 @@ public class N00bCocoonPlugin extends JavaPlugin {
     private String msgAdminReloaded;
     private String msgAdminCheck;
 
-    // === 认证权限（兼容各种登录插件） ===
-    private static final List<String> AUTH_PERMISSIONS = Arrays.asList(
-        "caellab.authenticated",   // CaelLabAuth
-        "authme.login",            // AuthMe
-        "nlogin.authenticated",    // NLogin
-        "auth.authenticated",      // 通用
-        " essentials.signs.use",   // Essentials（部分服用来判断已登录）
-        "luckperms.*"              // 如果没有任何登录插件，直接放行
-    );
-
-    // === 内置物品价值表（DeathDrop fallback） ===
+    // --- 内置物品价值表（DeathDrop不可用时的fallback） ---
     private final Map<String, Integer> builtinValues = new HashMap<>();
 
     public static N00bCocoonPlugin getInstance() {
@@ -88,240 +65,63 @@ public class N00bCocoonPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new N00bCocoonListener(this), this);
         getCommand("cocoon").setExecutor(new CocoonCommand(this));
 
-        // 启动保护状态巡检（每60秒，检测是否刚好过期）
-        startProtectionCheckTask();
-
-        getLogger().info("N00bCocoon v" + getDescription().getVersion()
-                + " | threshold=" + valueThreshold + "pts/" + timeThresholdHours + "h"
-                + " | mobs=" + hostileMobNames.size());
+        getLogger().info("N00bCocoon v" + getDescription().getVersion() + " | threshold=" + valueThreshold + "pts/" + timeThresholdHours + "h | mobs=" + hostileMobNames.size());
     }
 
     @Override
     public void onDisable() {
-        // 取消所有认证检测器
-        for (BukkitRunnable task : authCheckers.values()) {
-            task.cancel();
-        }
-        authCheckers.clear();
         savePlayerData();
         getLogger().info("N00bCocoon disabled");
     }
 
-    // ================================================================
-    //  保护状态巡检任务（每60秒跑一次，检测刚好过期的情况）
-    // ================================================================
+    // ============================================================
+    //  配置加载
+    // ============================================================
 
-    private void startProtectionCheckTask() {
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                for (Player player : Bukkit.getOnlinePlayers()) {
-                    boolean currentStatus = isProtected(player);
-                    Boolean lastStatus = lastProtectionStatus.get(player.getUniqueId());
+    public void loadConfig() {
+        reloadConfig();
 
-                    // 状态从「保护中」变为「无保护」→ 弹Title
-                    if (lastStatus != null && lastStatus && !currentStatus) {
-                        sendExpireTitle(player);
-                    }
+        prefix = colorize(getConfig().getString("prefix", "&a&l[新手茧] &r"));
 
-                    lastProtectionStatus.put(player.getUniqueId(), currentStatus);
-                }
-            }
-        }.runTaskTimer(this, 1200L, 1200L); // 60秒
-    }
+        // 保护条件
+        var cond = getConfig().getConfigurationSection("conditions");
+        if (cond != null) {
+            valueThreshold = cond.getInt("value-threshold", 5000);
+            timeThresholdHours = cond.getInt("time-threshold-hours", 48);
+        }
 
-    // ================================================================
-    //  认证检测（轮询权限，检测到就回调）
-    // ================================================================
+        // 保护效果
+        var eff = getConfig().getConfigurationSection("effects");
+        if (eff != null) {
+            pvpDamageMultiplier = eff.getDouble("pvp-damage-multiplier", 0.5);
+            pvpMaxDamage = eff.getInt("pvp-max-damage", 10);
+        }
 
-    /**
-     * 启动认证检测器，每1秒检查一次，直到玩家认证成功或超时
-     *
-     * @param player   玩家
-     * @param callback 认证成功后的回调
-     */
-    public void startAuthChecker(Player player, Runnable callback) {
-        UUID uuid = player.getUniqueId();
+        // 敌对生物列表
+        hostileMobNames.clear();
+        List<String> mobList = getConfig().getStringList("hostile-mobs");
+        for (String m : mobList) {
+            hostileMobNames.add(m.toUpperCase());
+        }
 
-        // 取消旧的检测器（如果存在）
-        cancelAuthChecker(uuid);
-
-        BukkitRunnable task = new BukkitRunnable() {
-            int ticks = 0;
-
-            @Override
-            public void run() {
-                ticks++;
-
-                // 玩家下线 → 取消
-                if (!player.isOnline()) {
-                    cancel();
-                    authCheckers.remove(uuid);
-                    return;
-                }
-
-                // 超时15秒 → 放行（兜底，防止登录插件没装或没权限节点）
-                if (ticks > 15) {
-                    cancel();
-                    authCheckers.remove(uuid);
-                    callback.run();
-                    return;
-                }
-
-                // 检测认证权限
-                if (isAuthenticated(player)) {
-                    cancel();
-                    authCheckers.remove(uuid);
-                    callback.run();
-                }
-            }
-        };
-
-        authCheckers.put(uuid, task);
-        task.runTaskTimer(this, 20L, 20L); // 每1秒
-    }
-
-    /**
-     * 取消玩家的认证检测器
-     */
-    public void cancelAuthChecker(UUID uuid) {
-        BukkitRunnable old = authCheckers.remove(uuid);
-        if (old != null) {
-            old.cancel();
+        // 消息
+        var msg = getConfig().getConfigurationSection("messages");
+        if (msg != null) {
+            msgProtected = msg.getString("protected", "");
+            msgProtectionExpired = msg.getString("protection-expired", "");
+            msgStatusProtected = msg.getString("status-protected", "");
+            msgStatusExpired = msg.getString("status-expired", "");
+            msgStatusValue = msg.getString("status-value", "");
+            msgStatusTime = msg.getString("status-time", "");
+            msgValueInfo = msg.getString("value-info", "");
+            msgAdminReloaded = msg.getString("admin-reloaded", "");
+            msgAdminCheck = msg.getString("admin-check", "");
         }
     }
 
-    /**
-     * 检查玩家是否已认证（遍历所有已知登录插件权限节点）
-     */
-    public boolean isAuthenticated(Player player) {
-        for (String perm : AUTH_PERMISSIONS) {
-            if (player.hasPermission(perm)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // ================================================================
-    //  通知方法
-    // ================================================================
-
-    /**
-     * 认证通过后调用：检查是否有待弹Title + 发送保护通知
-     */
-    public void sendPostAuthNotifications(Player player) {
-        UUID uuid = player.getUniqueId();
-
-        // 1. 先检查有没有排队的过期Title
-        if (pendingExpireMessages.contains(uuid)) {
-            // 延迟1秒再弹，等玩家完全加载
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (player.isOnline()) {
-                        sendExpireTitle(player);
-                    }
-                }
-            }.runTaskLater(N00bCocoonPlugin.getInstance(), 20L);
-            pendingExpireMessages.remove(uuid);
-            savePlayerData();
-        }
-
-        // 2. 如果当前还受保护 → 发送保护通知
-        if (isProtected(player)) {
-            long remaining = getProtectionRemainingMs(player);
-            String timeStr = formatRemainingTime(remaining);
-
-            // 聊天消息
-            player.sendMessage(colorize(getPrefix() + msgProtected));
-            player.sendMessage(colorize(
-                    "  &7保护剩余: &e" + timeStr + " &7| 价值上限: &e" + valueThreshold + " &7点"));
-
-            // Title（延迟1秒弹，视觉效果更好）
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (player.isOnline()) {
-                        player.sendTitle(
-                                colorize("&a&l§m--- &r&a新手茧 &a&l§m---"),
-                                colorize("&7保护剩余: &e" + timeStr + " &7| 价值上限: &e" + valueThreshold + " &7点"),
-                                10, 50, 15
-                        );
-                    }
-                }
-            }.runTaskLater(N00bCocoonPlugin.getInstance(), 30L); // 1.5秒
-        }
-
-        // 3. 记录当前保护状态
-        lastProtectionStatus.put(uuid, isProtected(player));
-    }
-
-    /**
-     * 发送保护过期Title（全屏弹出）
-     */
-    public void sendExpireTitle(Player player) {
-        player.sendTitle(
-                colorize("&c&l§m--- &r&c新手茧保护 &c&l§m---"),
-                colorize("&7保护已消退，小心行事！"),
-                10, 60, 20
-        );
-        player.sendMessage(colorize(prefix + msgProtectionExpired));
-    }
-
-    // ================================================================
-    //  撤销 / 恢复保护
-    // ================================================================
-
-    /**
-     * 撤销玩家新手保护（/cocoon ungive）
-     */
-    public void revokePlayer(UUID uuid) {
-        revokedPlayers.add(uuid);
-        savePlayerData();
-
-        Player player = Bukkit.getPlayer(uuid);
-        if (player != null && player.isOnline()) {
-            sendExpireTitle(player);
-            lastProtectionStatus.put(uuid, false);
-        } else {
-            // 不在线 → 排队等上线再弹
-            pendingExpireMessages.add(uuid);
-            savePlayerData();
-        }
-    }
-
-    /**
-     * 恢复玩家新手保护（/cocoon give）
-     */
-    public void unrevokePlayer(UUID uuid) {
-        revokedPlayers.remove(uuid);
-        pendingExpireMessages.remove(uuid);
-        // 重置首次加入时间为现在，让保护重新生效
-        firstJoinTimes.put(uuid, System.currentTimeMillis());
-        lastProtectionStatus.put(uuid, true);
-        savePlayerData();
-
-        Player player = Bukkit.getPlayer(uuid);
-        if (player != null && player.isOnline()) {
-            long remaining = getProtectionRemainingMs(player);
-            String timeStr = formatRemainingTime(remaining);
-            player.sendMessage(colorize(prefix + "&a新手茧保护已恢复！"));
-            player.sendTitle(
-                    colorize("&a&l§m--- &r&a新手茧 &a&l§m---"),
-                    colorize("&7保护剩余: &e" + timeStr + " &7| 价值上限: &e" + valueThreshold + " &7点"),
-                    10, 50, 15
-            );
-        }
-    }
-
-    public boolean isRevoked(UUID uuid) {
-        return revokedPlayers.contains(uuid);
-    }
-
-    // ================================================================
-    //  玩家数据（首次加入时间 / 撤销 / 待弹消息）
-    // ================================================================
+    // ============================================================
+    //  玩家数据（首次加入时间）
+    // ============================================================
 
     private void loadPlayerData() {
         playerDataFile = new File(getDataFolder(), "playerdata.yml");
@@ -344,14 +144,7 @@ public class N00bCocoonPlugin extends JavaPlugin {
                     if (time > 0) {
                         firstJoinTimes.put(uuid, time);
                     }
-                    if (section.getBoolean(uuidStr + ".revoked", false)) {
-                        revokedPlayers.add(uuid);
-                    }
-                    if (section.getBoolean(uuidStr + ".pending-expire", false)) {
-                        pendingExpireMessages.add(uuid);
-                    }
-                } catch (IllegalArgumentException ignored) {
-                }
+                } catch (IllegalArgumentException ignored) {}
             }
         }
         getLogger().info("已加载 " + firstJoinTimes.size() + " 个玩家数据");
@@ -359,13 +152,10 @@ public class N00bCocoonPlugin extends JavaPlugin {
 
     public void savePlayerData() {
         if (playerDataConfig == null) return;
+        // 写回所有内存数据
         var section = playerDataConfig.createSection("players");
         for (var entry : firstJoinTimes.entrySet()) {
-            UUID uuid = entry.getKey();
-            String path = uuid.toString();
-            section.set(path + ".first-join", entry.getValue());
-            section.set(path + ".revoked", revokedPlayers.contains(uuid));
-            section.set(path + ".pending-expire", pendingExpireMessages.contains(uuid));
+            section.set(entry.getKey().toString() + ".first-join", entry.getValue());
         }
         try {
             playerDataConfig.save(playerDataFile);
@@ -374,74 +164,44 @@ public class N00bCocoonPlugin extends JavaPlugin {
         }
     }
 
-    // ================================================================
-    //  保护判定
-    // ================================================================
-
+    /**
+     * 获取玩家首次加入时间（毫秒时间戳）
+     * 如果没有记录，则以当前时间作为首次加入（兼容插件安装前已存在的玩家）
+     */
     public long getFirstJoinTime(UUID uuid) {
         return firstJoinTimes.computeIfAbsent(uuid, k -> System.currentTimeMillis());
     }
 
+    /**
+     * 记录玩家首次加入时间（仅首次）
+     */
     public void recordFirstJoin(UUID uuid) {
         if (!firstJoinTimes.containsKey(uuid)) {
             firstJoinTimes.put(uuid, System.currentTimeMillis());
-            savePlayerData();
+            savePlayerData(); // 立即持久化
         }
     }
 
-    public boolean isProtected(Player player) {
-        if (player.hasPermission("n00bcocoon.bypass")) return true;
-        if (isRevoked(player.getUniqueId())) return false;
-
-        UUID uuid = player.getUniqueId();
-        long firstJoin = getFirstJoinTime(uuid);
-        long now = System.currentTimeMillis();
-        long thresholdMs = (long) timeThresholdHours * 3600L * 1000L;
-
-        boolean withinTime = (now - firstJoin) < thresholdMs;
-        boolean belowValue = getTotalValue(player) < valueThreshold;
-
-        return withinTime && belowValue;
-    }
-
-    public long getProtectionRemainingMs(Player player) {
-        UUID uuid = player.getUniqueId();
-        long firstJoin = getFirstJoinTime(uuid);
-        long now = System.currentTimeMillis();
-        long thresholdMs = (long) timeThresholdHours * 3600L * 1000L;
-        long remaining = thresholdMs - (now - firstJoin);
-        return Math.max(0, remaining);
-    }
-
-    public String formatRemainingTime(long ms) {
-        if (ms <= 0) return "已过期";
-        long hours = ms / 3600000;
-        long minutes = (ms % 3600000) / 60000;
-        long seconds = (ms % 60000) / 1000;
-        if (hours > 0) return hours + "小时" + minutes + "分钟";
-        if (minutes > 0) return minutes + "分钟" + seconds + "秒";
-        return seconds + "秒";
-    }
-
-    public boolean isHostileMob(String entityTypeName) {
-        return hostileMobNames.contains(entityTypeName.toUpperCase());
-    }
-
-    // ================================================================
+    // ============================================================
     //  物品价值计算（与DeathDrop共用逻辑）
-    // ================================================================
+    // ============================================================
 
+    /**
+     * 计算物品栈总价值（含附魔加成）
+     */
     public int getItemStackValue(ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return 0;
 
         String materialName = item.getType().name();
 
+        // 附魔书特殊处理
         if (item.getType() == Material.ENCHANTED_BOOK) {
             return getMaterialValue("enchanted_book");
         }
 
         int baseValue = getMaterialValue(materialName);
 
+        // 附魔加成：每级附魔 +10% 基础价值（与DeathDrop一致）
         if (item.hasItemMeta()) {
             ItemMeta meta = item.getItemMeta();
             if (meta != null && meta.hasEnchants()) {
@@ -456,7 +216,11 @@ public class N00bCocoonPlugin extends JavaPlugin {
         return baseValue;
     }
 
+    /**
+     * 获取材质价值，优先从DeathDrop读取，fallback到内置表
+     */
     public int getMaterialValue(String materialName) {
+        // 尝试调用 DeathDrop 的 getItemValue
         var dd = Bukkit.getPluginManager().getPlugin("DeathDrop");
         if (dd != null && dd.isEnabled()) {
             try {
@@ -465,19 +229,22 @@ public class N00bCocoonPlugin extends JavaPlugin {
                 if (result instanceof Integer) {
                     return (int) result;
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
 
+        // Fallback: 内置价值表
         String key = materialName.toLowerCase();
         if (builtinValues.containsKey(key)) return builtinValues.get(key);
         if (key.startsWith("minecraft:")) {
             key = key.substring(10);
             if (builtinValues.containsKey(key)) return builtinValues.get(key);
         }
-        return 50;
+        return 50; // 默认价值
     }
 
+    /**
+     * 计算玩家背包物品总价值
+     */
     public int getTotalValue(Player player) {
         int total = 0;
         for (ItemStack item : player.getInventory().getContents()) {
@@ -490,50 +257,62 @@ public class N00bCocoonPlugin extends JavaPlugin {
         return total;
     }
 
-    // ================================================================
-    //  配置加载
-    // ================================================================
+    // ============================================================
+    //  保护判定
+    // ============================================================
 
-    public void loadConfig() {
-        reloadConfig();
+    /**
+     * 判断玩家是否受到新手茧保护
+     */
+    public boolean isProtected(Player player) {
+        if (player.hasPermission("n00bcocoon.bypass")) return true;
 
-        prefix = colorize(getConfig().getString("prefix", "&a&l[新手茧] &r"));
+        UUID uuid = player.getUniqueId();
+        long firstJoin = getFirstJoinTime(uuid);
+        long now = System.currentTimeMillis();
+        long thresholdMs = (long) timeThresholdHours * 3600L * 1000L;
 
-        var cond = getConfig().getConfigurationSection("conditions");
-        if (cond != null) {
-            valueThreshold = cond.getInt("value-threshold", 5000);
-            timeThresholdHours = cond.getInt("time-threshold-hours", 48);
-        }
+        boolean withinTime = (now - firstJoin) < thresholdMs;
+        boolean belowValue = getTotalValue(player) < valueThreshold;
 
-        var eff = getConfig().getConfigurationSection("effects");
-        if (eff != null) {
-            pvpDamageMultiplier = eff.getDouble("pvp-damage-multiplier", 0.5);
-            pvpMaxDamage = eff.getInt("pvp-max-damage", 10);
-        }
-
-        hostileMobNames.clear();
-        List<String> mobList = getConfig().getStringList("hostile-mobs");
-        for (String m : mobList) {
-            hostileMobNames.add(m.toUpperCase());
-        }
-
-        var msg = getConfig().getConfigurationSection("messages");
-        if (msg != null) {
-            msgProtected = msg.getString("protected", "");
-            msgProtectionExpired = msg.getString("protection-expired", "");
-            msgStatusProtected = msg.getString("status-protected", "");
-            msgStatusExpired = msg.getString("status-expired", "");
-            msgStatusValue = msg.getString("status-value", "");
-            msgStatusTime = msg.getString("status-time", "");
-            msgValueInfo = msg.getString("value-info", "");
-            msgAdminReloaded = msg.getString("admin-reloaded", "");
-            msgAdminCheck = msg.getString("admin-check", "");
-        }
+        return withinTime && belowValue;
     }
 
-    // ================================================================
-    //  Getters
-    // ================================================================
+    /**
+     * 获取保护剩余时间（毫秒），若无保护返回0
+     */
+    public long getProtectionRemainingMs(Player player) {
+        UUID uuid = player.getUniqueId();
+        long firstJoin = getFirstJoinTime(uuid);
+        long now = System.currentTimeMillis();
+        long thresholdMs = (long) timeThresholdHours * 3600L * 1000L;
+        long remaining = thresholdMs - (now - firstJoin);
+        return Math.max(0, remaining);
+    }
+
+    /**
+     * 格式化剩余时间为可读字符串
+     */
+    public String formatRemainingTime(long ms) {
+        if (ms <= 0) return "已过期";
+        long hours = ms / 3600000;
+        long minutes = (ms % 3600000) / 60000;
+        long seconds = (ms % 60000) / 1000;
+        if (hours > 0) return hours + "小时" + minutes + "分钟";
+        if (minutes > 0) return minutes + "分钟" + seconds + "秒";
+        return seconds + "秒";
+    }
+
+    /**
+     * 检查实体类型名是否是配置中的敌对生物
+     */
+    public boolean isHostileMob(String entityTypeName) {
+        return hostileMobNames.contains(entityTypeName.toUpperCase());
+    }
+
+    // ============================================================
+    //  消息工具
+    // ============================================================
 
     public String getPrefix() { return prefix; }
     public String getMsgProtected() { return msgProtected; }
@@ -554,9 +333,9 @@ public class N00bCocoonPlugin extends JavaPlugin {
         return ChatColor.translateAlternateColorCodes('&', msg);
     }
 
-    // ================================================================
+    // ============================================================
     //  内置物品价值表（DeathDrop fallback）
-    // ================================================================
+    // ============================================================
 
     private void initBuiltinValues() {
         // 剑
