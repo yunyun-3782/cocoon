@@ -19,6 +19,15 @@ effects:
   # PvP单次伤害上限
   pvp-max-damage: 10
 
+# 消退系统：保护到期后的渐进消失
+fading:
+  # 保护到期后倒计时秒数（期间仍享受完整保护）
+  countdown-seconds: 120
+  # 倒计时结束后100%抑制敌对生物生成的分钟数
+  suppression-minutes: 30
+  # 之后生成抑制从100%线性衰减至0%的分钟数
+  decay-minutes: 60
+
 # 敌对生物列表（实体类型名，不区分大小写）
 # 参考: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/entity/EntityType.html
 hostile-mobs:

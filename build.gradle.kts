@@ -15,7 +15,8 @@ dependencies {
 }
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 tasks.processResources {
@@ -26,5 +27,5 @@ tasks.processResources {
 
 tasks.jar {
     archiveFileName.set("N00bCocoon-${version}.jar")
-    destinationDirectory.set(file("/tmp/N00bCocoon/build/libs"))
+    destinationDirectory.set(file("/tmp/cocoon-build/build/libs"))
 }
