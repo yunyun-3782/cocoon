@@ -97,4 +97,6 @@ gradle build
 
 ## 许可证
 
-[CaelLab BY-SA Code License](https://caellab.com/license/bysa-code)
+Copyright (c) 2025 Yunyun(云云)
+
+Licensed under the [CaelLab BY-SA Code License, Version 3](https://www.caellab.com/license/cbs-v3).

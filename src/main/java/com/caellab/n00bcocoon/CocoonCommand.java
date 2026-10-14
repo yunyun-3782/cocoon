@@ -3,8 +3,8 @@
  * 命令处理器：/cocoon status|reload|check|ungive|give
  * Copyright (c) 2025 Yunyun(云云)
  *
- * CaelLab BY-SA Code License
- * https://caellab.com/license/bysa-code
+ * CaelLab BY-SA Code License, Version 3
+ * https://www.caellab.com/license/cbs-v3
  */
 package com.caellab.n00bcocoon;
 
