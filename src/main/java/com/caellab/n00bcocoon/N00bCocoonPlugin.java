@@ -3,7 +3,7 @@
  * 低价值新人的保护壳，依赖DeathDrop价值体系
  * Copyright (c) 2025 Yunyun(云云)
  *
- * CaelLab BY-SA Code License, Version 3
+ * CaelLab BY-SA Code License, Version 3 or any later version
  * https://www.caellab.com/license/cbs-v3
  */
 package com.caellab.n00bcocoon;
