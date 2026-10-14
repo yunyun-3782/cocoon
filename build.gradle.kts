@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.caellab.n00bcocoon"
-version = "20261015013922"
+version = "20261015014231"
 
 repositories {
     mavenCentral()
@@ -20,6 +20,8 @@ java {
 }
 
 tasks.processResources {
+    // 不声明输入的话，只改 version 时这个任务会被判定 UP-TO-DATE 跳过，plugin.yml 里的版本号就留在旧值
+    inputs.property("version", version)
     filesMatching("plugin.yml") {
         expand("version" to version)
     }
