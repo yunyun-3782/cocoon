@@ -34,6 +34,9 @@ public class N00bCocoonPlugin extends JavaPlugin {
     // --- 撤销系统 ---
     private final Set<UUID> revokedPlayers = ConcurrentHashMap.newKeySet();
 
+    // --- 状态提示去重：上次已向玩家提示过的状态 ---
+    private final Map<UUID, String> notifiedStates = new ConcurrentHashMap<>();
+
     // --- 消退系统 ---
     // UUID -> 消退阶段总结束时间戳(ms)
     private final Map<UUID, Long> fadingEndTimes = new ConcurrentHashMap<>();
@@ -180,6 +183,10 @@ public class N00bCocoonPlugin extends JavaPlugin {
                     if (section.getBoolean(uuidStr + ".revoked", false)) {
                         revokedPlayers.add(uuid);
                     }
+                    String ns = section.getString(uuidStr + ".notified-state", null);
+                    if (ns != null) {
+                        notifiedStates.put(uuid, ns);
+                    }
                 } catch (IllegalArgumentException ignored) {}
             }
         }
@@ -189,10 +196,17 @@ public class N00bCocoonPlugin extends JavaPlugin {
     public void savePlayerData() {
         if (playerDataConfig == null) return;
         var section = playerDataConfig.createSection("players");
-        for (var entry : firstJoinTimes.entrySet()) {
-            UUID uuid = entry.getKey();
-            section.set(uuid.toString() + ".first-join", entry.getValue());
+        // 只遍历 firstJoinTimes 会漏掉「只被 ungive 过、却不在首次加入表里」的玩家
+        Set<UUID> all = new HashSet<>(firstJoinTimes.keySet());
+        all.addAll(revokedPlayers);
+        all.addAll(notifiedStates.keySet());
+        for (UUID uuid : all) {
+            section.set(uuid.toString() + ".first-join", firstJoinTimes.getOrDefault(uuid, 0L));
             section.set(uuid.toString() + ".revoked", revokedPlayers.contains(uuid));
+            String ns = notifiedStates.get(uuid);
+            if (ns != null) {
+                section.set(uuid.toString() + ".notified-state", ns);
+            }
         }
         try {
             playerDataConfig.save(playerDataFile);
@@ -202,7 +216,7 @@ public class N00bCocoonPlugin extends JavaPlugin {
     }
 
     public long getFirstJoinTime(UUID uuid) {
-        return firstJoinTimes.computeIfAbsent(uuid, k -> System.currentTimeMillis());
+        return firstJoinTimes.getOrDefault(uuid, 0L);
     }
 
     public void recordFirstJoin(UUID uuid) {
@@ -218,6 +232,7 @@ public class N00bCocoonPlugin extends JavaPlugin {
 
     public void revokePlayer(UUID uuid) {
         revokedPlayers.add(uuid);
+        notifiedStates.put(uuid, "revoked");
         fadingEndTimes.remove(uuid);
         cancelFadingTask(uuid);
         savePlayerData();
@@ -230,6 +245,14 @@ public class N00bCocoonPlugin extends JavaPlugin {
 
     public boolean isRevoked(UUID uuid) {
         return revokedPlayers.contains(uuid);
+    }
+
+    public String getNotifiedState(UUID uuid) {
+        return notifiedStates.get(uuid);
+    }
+
+    public void setNotifiedState(UUID uuid, String state) {
+        notifiedStates.put(uuid, state);
     }
 
     // ============================================================
@@ -321,6 +344,11 @@ public class N00bCocoonPlugin extends JavaPlugin {
         return now < suppressionEnd;
     }
 
+    public void clearFading(UUID uuid) {
+        fadingEndTimes.remove(uuid);
+        cancelFadingTask(uuid);
+    }
+
     public void cancelFadingTask(UUID uuid) {
         Integer taskId = fadingTaskIds.remove(uuid);
         if (taskId != null) {
@@ -375,7 +403,8 @@ public class N00bCocoonPlugin extends JavaPlugin {
 
     public int getTotalValue(Player player) {
         int total = 0;
-        for (ItemStack item : player.getInventory().getContents()) {
+        // getContents() 已经含盔甲和副手（41 格），再叠 armor/offhand 会把它们算两遍
+        for (ItemStack item : player.getInventory().getStorageContents()) {
             total += getItemStackValue(item);
         }
         for (ItemStack item : player.getInventory().getArmorContents()) {

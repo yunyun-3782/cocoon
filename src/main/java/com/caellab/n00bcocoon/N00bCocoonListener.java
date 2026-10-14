@@ -4,7 +4,10 @@
  */
 package com.caellab.n00bcocoon;
 
+import org.bukkit.Location;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -12,6 +15,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent.DamageModifier;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -44,14 +48,27 @@ public class N00bCocoonListener implements Listener {
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline()) return;
+            UUID uuid = player.getUniqueId();
+            String state;
             if (plugin.isProtected(player)) {
+                state = "protected";
+            } else if (plugin.isRevoked(uuid)) {
+                state = "revoked";
+            } else {
+                state = "expired";
+            }
+            // 只在状态变化时提示一次，避免每次登录重复刷屏
+            if (state.equals(plugin.getNotifiedState(uuid))) return;
+            plugin.setNotifiedState(uuid, state);
+
+            if (state.equals("protected")) {
                 long remaining = plugin.getProtectionRemainingMs(player);
                 String timeStr = plugin.formatRemainingTime(remaining);
                 player.sendMessage(N00bCocoonPlugin.colorize(
                         plugin.getPrefix() + plugin.getMsgProtected()));
                 player.sendMessage(N00bCocoonPlugin.colorize(
                         "  &7保护剩余: &e" + timeStr + " &7| 价值上限: &e" + plugin.getValueThreshold() + " &7点"));
-            } else if (plugin.isRevoked(player.getUniqueId())) {
+            } else if (state.equals("revoked")) {
                 player.sendMessage(N00bCocoonPlugin.colorize(
                         plugin.getPrefix() + "&c你的新手茧保护已被管理员撤销"));
             }
@@ -61,8 +78,8 @@ public class N00bCocoonListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
-        // 下线立即退出消退状态
-        plugin.cancelFadingTask(uuid);
+        // 下线立即清掉消退状态：只取消推进任务不删结束时间的话，重上线会卡在阶段1再也不推进
+        plugin.clearFading(uuid);
         fadingTriggered.remove(uuid);
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             plugin.savePlayerData();
@@ -100,41 +117,39 @@ public class N00bCocoonListener implements Listener {
         if (!protectedOrFading && !plugin.isFading(victim.getUniqueId())) return;
 
         Player attacker = null;
-        boolean isHostileMob = false;
+        boolean hostileSource = false;
 
-        if (event.getDamager() instanceof Player) {
-            attacker = (Player) event.getDamager();
-        } else if (event.getDamager() instanceof Projectile) {
-            Projectile proj = (Projectile) event.getDamager();
-            ProjectileSource shooter = proj.getShooter();
+        Entity damager = event.getDamager();
+        if (damager instanceof Player) {
+            attacker = (Player) damager;
+        } else if (damager instanceof Projectile) {
+            // 弹射物得看 shooter 的类型：箭矢自身的类型是 ARROW，不能拿它判敌对生物
+            ProjectileSource shooter = ((Projectile) damager).getShooter();
             if (shooter instanceof Player) {
                 attacker = (Player) shooter;
-            } else if (event.getDamager() instanceof org.bukkit.entity.LivingEntity) {
-                isHostileMob = plugin.isHostileMob(event.getDamager().getType().name());
+            } else if (shooter instanceof LivingEntity) {
+                hostileSource = plugin.isHostileMob(((LivingEntity) shooter).getType().name());
             }
-        } else if (event.getDamager() instanceof org.bukkit.entity.LivingEntity) {
-            isHostileMob = plugin.isHostileMob(event.getDamager().getType().name());
+        } else if (damager instanceof LivingEntity) {
+            hostileSource = plugin.isHostileMob(damager.getType().name());
         }
 
-        // 敌对生物伤害：完全免疫
-        if (isHostileMob || (attacker == null && event.getDamager() instanceof org.bukkit.entity.LivingEntity)) {
-            if (plugin.isHostileMob(event.getDamager().getType().name())) {
-                event.setCancelled(true);
-                notifyVictim(victim, "&7敌对生物的攻击被新手茧挡下了~");
-                return;
-            }
+        // 敌对生物伤害（近战或远程投射物）：完全免疫
+        if (hostileSource) {
+            event.setCancelled(true);
+            notifyVictim(victim, "&7敌对生物的攻击被新手茧挡下了~");
+            return;
         }
 
-        // PvP伤害：50%减伤，最高10点
+        // PvP伤害：按倍率减伤并封顶；改的是基础伤害，护甲在其后再算，所以最终值以 getFinalDamage 为准
         if (attacker != null && attacker != victim) {
-            double originalDamage = event.getFinalDamage();
-            double reducedDamage = originalDamage * plugin.getPvpDamageMultiplier();
+            double reducedDamage = event.getDamage(DamageModifier.BASE) * plugin.getPvpDamageMultiplier();
             if (reducedDamage > plugin.getPvpMaxDamage()) {
                 reducedDamage = plugin.getPvpMaxDamage();
             }
-            event.setDamage(reducedDamage);
+            event.setDamage(DamageModifier.BASE, reducedDamage);
             notifyVictim(victim, "&7你受到新手茧保护，PvP伤害已降低至 &e"
-                    + String.format("%.1f", reducedDamage) + " &7点");
+                    + String.format("%.1f", event.getFinalDamage()) + " &7点");
             attacker.sendMessage(N00bCocoonPlugin.colorize(
                     plugin.getPrefix() + "&7该玩家受新手茧保护，伤害已降低"));
         }
@@ -191,10 +206,11 @@ public class N00bCocoonListener implements Listener {
 
             // 检查距离：以玩家为中心，按抑制比例缩小范围
             // 100%抑制 = 128格范围，线性衰减
+            // 跨世界不能比较距离，直接跳过该玩家
+            Location spawnLoc = event.getLocation();
+            if (spawnLoc.getWorld() != player.getWorld()) continue;
             double maxDistance = 128.0 * suppression;
-            double distance = event.getLocation().distance(player.getLocation());
-
-            if (distance > maxDistance) continue;
+            if (spawnLoc.distanceSquared(player.getLocation()) > maxDistance * maxDistance) continue;
 
             // 概率取消生成
             if (Math.random() < suppression) {

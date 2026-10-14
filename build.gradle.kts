@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.caellab.n00bcocoon"
-version = "1.1.0"
+version = "20261015013922"
 
 repositories {
     mavenCentral()
@@ -27,5 +27,4 @@ tasks.processResources {
 
 tasks.jar {
     archiveFileName.set("N00bCocoon-${version}.jar")
-    destinationDirectory.set(file("/tmp/cocoon-build/build/libs"))
 }
